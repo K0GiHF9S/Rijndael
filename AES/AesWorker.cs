@@ -13,27 +13,14 @@ namespace Rijndael
         public static string Encrypt(string source, string password)
         {
             string encryptedSource;
-            try
+            using (var rijndael = new RijndaelManaged())
             {
-                using (var rijndael = new RijndaelManaged())
+                InitializeRijndael(password, rijndael);
+                using (var encryptor = rijndael.CreateEncryptor())
                 {
-                    InitializeRijndael(password, rijndael);
-                    using (var mStream = new MemoryStream())
-                    using (var encryptor = rijndael.CreateEncryptor())
-                    using (var cStream = new CryptoStream(mStream, encryptor, CryptoStreamMode.Write))
-                    {
-                        using (var writer = new StreamWriter(cStream))
-                        {
-                            writer.Write(source);
-                        }
-                        encryptedSource = Convert.ToBase64String(mStream.ToArray());
-                    }
+                    var bSorce = Encoding.UTF8.GetBytes(source);
+                    encryptedSource = Convert.ToBase64String(encryptor.TransformFinalBlock(bSorce, 0, bSorce.Length));
                 }
-            }
-            catch (CryptographicException e)
-            {
-                System.Diagnostics.Trace.WriteLine(e.Message);
-                return null;
             }
             return encryptedSource;
         }
@@ -41,29 +28,27 @@ namespace Rijndael
         public static string Decrypt(string source, string password)
         {
             string decryptedSource;
-            try
+            using (var rijndael = new RijndaelManaged())
             {
-                using (var rijndael = new RijndaelManaged())
+                InitializeRijndael(password, rijndael);
+                using (var decryptor = rijndael.CreateDecryptor())
                 {
-                    InitializeRijndael(password, rijndael);
-                    using (var mStream = new MemoryStream(Convert.FromBase64String(source)))
-                    using (var decryptor = rijndael.CreateDecryptor())
-                    using (var cStream = new CryptoStream(mStream, decryptor, CryptoStreamMode.Read))
-                    using (var reader = new StreamReader(cStream))
+                    try
                     {
-                        decryptedSource = reader.ReadToEnd();
+                        var bSorce = Convert.FromBase64String(source);
+                        decryptedSource = Encoding.UTF8.GetString(decryptor.TransformFinalBlock(bSorce, 0, bSorce.Length));
+                    }
+                    catch (FormatException e)
+                    {
+                        System.Diagnostics.Trace.WriteLine(e.Message);
+                        decryptedSource = null;
+                    }
+                    catch (CryptographicException e)
+                    {
+                        System.Diagnostics.Trace.WriteLine(e.Message);
+                        decryptedSource = null;
                     }
                 }
-            }
-            catch (FormatException e)
-            {
-                System.Diagnostics.Trace.WriteLine(e.Message);
-                return null;
-            }
-            catch (CryptographicException e)
-            {
-                System.Diagnostics.Trace.WriteLine(e.Message);
-                return null;
             }
             return decryptedSource;
         }
