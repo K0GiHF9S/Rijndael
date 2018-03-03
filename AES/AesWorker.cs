@@ -8,19 +8,39 @@ namespace Rijndael
 {
     static class RijndaelWorker
     {
+        private static readonly int KEY_SIZE = 128;
+        private static readonly int BLOCK_SIZE = 128;
         private static readonly string SALT = @"akfv#oVfktRhrjo!hjm5t";
 
         public static string Encrypt(string source, string password)
         {
-            byte[] encryptedSource;
+            string encryptedSource;
             try
             {
                 using (var rijndael = new RijndaelManaged())
                 {
-                    InitializeRijndael(password, rijndael);
-                    var encryptor = rijndael.CreateEncryptor();
-                    var bSource = Encoding.UTF8.GetBytes(source);
-                    encryptedSource = encryptor.TransformFinalBlock(bSource, 0, bSource.Length);
+                    rijndael.KeySize = KEY_SIZE;
+                    rijndael.BlockSize = BLOCK_SIZE;
+                    rijndael.Mode = CipherMode.CBC;
+                    rijndael.Padding = PaddingMode.PKCS7;
+                    rijndael.GenerateIV();
+                    rijndael.Key = GenerateKey(password);
+
+                    byte[] bEncryptedSource;
+                    using (var mStream = new MemoryStream())
+                    using (var encryptor = rijndael.CreateEncryptor())
+                    using (var cStream = new CryptoStream(mStream, encryptor, CryptoStreamMode.Write))
+                    {
+                        using (var writer = new StreamWriter(cStream))
+                        {
+                            writer.Write(source);
+                        }
+                        bEncryptedSource = mStream.ToArray();
+                    }
+                    byte[] ivAndBSource = new byte[rijndael.IV.Length + bEncryptedSource.Length];
+                    Array.Copy(rijndael.IV, ivAndBSource, rijndael.IV.Length);
+                    Array.Copy(bEncryptedSource, 0, ivAndBSource, rijndael.IV.Length, bEncryptedSource.Length);
+                    encryptedSource = Convert.ToBase64String(ivAndBSource);
                 }
             }
             catch (CryptographicException e)
@@ -28,43 +48,61 @@ namespace Rijndael
                 System.Diagnostics.Trace.WriteLine(e.Message);
                 return null;
             }
-            return Convert.ToBase64String(encryptedSource);
+            return encryptedSource;
         }
 
         public static string Decrypt(string source, string password)
         {
-            byte[] decryptedSource;
+            string decryptedSource;
             try
             {
+                var ivAndBSource = Convert.FromBase64String(source);
+                if (ivAndBSource.Length < BLOCK_SIZE / 8)
+                {
+                    return null;
+                }
                 using (var rijndael = new RijndaelManaged())
                 {
-                    InitializeRijndael(password, rijndael);
-                    var decryptor = rijndael.CreateDecryptor();
-                    var bSource = Convert.FromBase64String(source);
-                    decryptedSource = decryptor.TransformFinalBlock(bSource, 0, bSource.Length);
+                    rijndael.KeySize = KEY_SIZE;
+                    rijndael.BlockSize = BLOCK_SIZE;
+                    rijndael.Mode = CipherMode.CBC;
+                    rijndael.Padding = PaddingMode.PKCS7;
+                    var iv = new byte[BLOCK_SIZE / 8];
+                    Array.Copy(ivAndBSource, 0, iv, 0, iv.Length);
+                    var bSource = new byte[ivAndBSource.Length - iv.Length];
+                    Array.Copy(ivAndBSource, iv.Length, bSource, 0, bSource.Length);
+
+                    rijndael.IV = iv;
+                    rijndael.Key = GenerateKey(password);
+
+                    using (var mStream = new MemoryStream(bSource))
+                    using (var decryptor = rijndael.CreateDecryptor())
+                    using (var cStream = new CryptoStream(mStream, decryptor, CryptoStreamMode.Read))
+                    using (var reader = new StreamReader(cStream))
+                    {
+                        decryptedSource = reader.ReadToEnd();
+                    }
                 }
+            }
+            catch (FormatException e)
+            {
+                System.Diagnostics.Trace.WriteLine(e.Message);
+                return null;
             }
             catch (CryptographicException e)
             {
                 System.Diagnostics.Trace.WriteLine(e.Message);
                 return null;
             }
-            return Encoding.UTF8.GetString(decryptedSource);
+            return decryptedSource;
         }
 
-        private static void InitializeRijndael(string password, RijndaelManaged rijndael)
+        private static byte[] GenerateKey(string password)
         {
-            rijndael.KeySize = 128;
-            rijndael.BlockSize = 128;
-            rijndael.Mode = CipherMode.CBC;
-            rijndael.Padding = PaddingMode.PKCS7;
-
-            var bSalt = Encoding.UTF8.GetBytes(SALT);
-            Rfc2898DeriveBytes deriveBytes = new Rfc2898DeriveBytes(password, bSalt);
+            byte[] salt = Encoding.UTF8.GetBytes(SALT);
+            var deriveBytes = new Rfc2898DeriveBytes(password, salt);
             deriveBytes.IterationCount = 1000;
-
-            rijndael.Key = deriveBytes.GetBytes(rijndael.KeySize / 8);
-            rijndael.IV = deriveBytes.GetBytes(rijndael.BlockSize / 8);
+            return deriveBytes.GetBytes(KEY_SIZE / 8);
         }
     }
 }
