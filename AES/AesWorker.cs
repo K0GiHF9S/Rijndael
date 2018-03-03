@@ -15,38 +15,26 @@ namespace Rijndael
         public static string Encrypt(string source, string password)
         {
             string encryptedSource;
-            try
+            using (var rijndael = new RijndaelManaged())
             {
-                using (var rijndael = new RijndaelManaged())
-                {
-                    rijndael.KeySize = KEY_SIZE;
-                    rijndael.BlockSize = BLOCK_SIZE;
-                    rijndael.Mode = CipherMode.CBC;
-                    rijndael.Padding = PaddingMode.PKCS7;
-                    rijndael.GenerateIV();
-                    rijndael.Key = GenerateKey(password);
+                rijndael.KeySize = KEY_SIZE;
+                rijndael.BlockSize = BLOCK_SIZE;
+                rijndael.Mode = CipherMode.CBC;
+                rijndael.Padding = PaddingMode.PKCS7;
+                rijndael.Key = GenerateKey(password);
+                rijndael.GenerateIV();
 
-                    byte[] bEncryptedSource;
-                    using (var mStream = new MemoryStream())
-                    using (var encryptor = rijndael.CreateEncryptor())
-                    using (var cStream = new CryptoStream(mStream, encryptor, CryptoStreamMode.Write))
-                    {
-                        using (var writer = new StreamWriter(cStream))
-                        {
-                            writer.Write(source);
-                        }
-                        bEncryptedSource = mStream.ToArray();
-                    }
-                    byte[] ivAndBSource = new byte[rijndael.IV.Length + bEncryptedSource.Length];
-                    Array.Copy(rijndael.IV, ivAndBSource, rijndael.IV.Length);
-                    Array.Copy(bEncryptedSource, 0, ivAndBSource, rijndael.IV.Length, bEncryptedSource.Length);
-                    encryptedSource = Convert.ToBase64String(ivAndBSource);
+                byte[] bEncryptedSource;
+                using (var encryptor = rijndael.CreateEncryptor())
+                {
+                    var bSource = Encoding.UTF8.GetBytes(source);
+                    bEncryptedSource = encryptor.TransformFinalBlock(bSource, 0, bSource.Length); ;
                 }
-            }
-            catch (CryptographicException e)
-            {
-                System.Diagnostics.Trace.WriteLine(e.Message);
-                return null;
+
+                byte[] ivAndBSource = new byte[rijndael.IV.Length + bEncryptedSource.Length];
+                Array.Copy(rijndael.IV, ivAndBSource, rijndael.IV.Length);
+                Array.Copy(bEncryptedSource, 0, ivAndBSource, rijndael.IV.Length, bEncryptedSource.Length);
+                encryptedSource = Convert.ToBase64String(ivAndBSource);
             }
             return encryptedSource;
         }
@@ -61,26 +49,24 @@ namespace Rijndael
                 {
                     return null;
                 }
+
                 using (var rijndael = new RijndaelManaged())
                 {
                     rijndael.KeySize = KEY_SIZE;
                     rijndael.BlockSize = BLOCK_SIZE;
                     rijndael.Mode = CipherMode.CBC;
                     rijndael.Padding = PaddingMode.PKCS7;
+                    rijndael.Key = GenerateKey(password);
+
                     var iv = new byte[BLOCK_SIZE / 8];
                     Array.Copy(ivAndBSource, 0, iv, 0, iv.Length);
                     var bSource = new byte[ivAndBSource.Length - iv.Length];
                     Array.Copy(ivAndBSource, iv.Length, bSource, 0, bSource.Length);
-
                     rijndael.IV = iv;
-                    rijndael.Key = GenerateKey(password);
-
-                    using (var mStream = new MemoryStream(bSource))
+                    
                     using (var decryptor = rijndael.CreateDecryptor())
-                    using (var cStream = new CryptoStream(mStream, decryptor, CryptoStreamMode.Read))
-                    using (var reader = new StreamReader(cStream))
                     {
-                        decryptedSource = reader.ReadToEnd();
+                        decryptedSource = Encoding.UTF8.GetString(decryptor.TransformFinalBlock(bSource, 0, bSource.Length));
                     }
                 }
             }
