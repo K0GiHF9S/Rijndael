@@ -10,8 +10,6 @@ namespace Rijndael
 {
     public partial class Form1 : Form
     {
-        private readonly string salt = @"akfv#oVfktRhrjo!hjm5t";
-
         public Form1()
         {
             InitializeComponent();
@@ -19,12 +17,12 @@ namespace Rijndael
 
         private void EncryptButton_Click(object sender, EventArgs e)
         {
-            this.encryptedText.Text = RijndaelWorker.Encrypt(this.sourceText.Text, this.passwordText.Text, salt);
+            this.encryptedText.Text = RijndaelWorker.Encrypt(this.sourceText.Text, this.passwordText.Text);
         }
 
         private void DecryptButton_Click(object sender, EventArgs e)
         {
-            this.sourceText.Text = RijndaelWorker.Decrypt(this.encryptedText.Text, this.passwordText.Text, salt);
+            this.sourceText.Text = RijndaelWorker.Decrypt(this.encryptedText.Text, this.passwordText.Text);
         }
     }
 }
